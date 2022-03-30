@@ -1,6 +1,7 @@
 # -*- coding:utf-8 -*-
 from factory import Backbones
 import tensorflow as tf
+import tensorflow_addons as tfa
 
 from keras import backend as K
 
@@ -99,6 +100,26 @@ class MaxUnpooling2D(tf.keras.layers.Layer):
                 mask_shape[3]
                 )
 
+def unpool_with_argmax(pool, idx, kernel_size=[1,2,2,1]):
+
+    input_shape = pool.get_shape().as_list()
+    output_shape = (input_shape[0], input_shape[1] * kernel_size[1], input_shape[2] * kernel_size[2], input_shape[3])
+
+    flat_input_size = tf.keras.backend.prod(input_shape)
+    flat_output_shape = [output_shape[0], output_shape[1] * output_shape[2] * output_shape[3]]
+
+    pool_ = tf.reshape(pool, [flat_input_size])
+    batch_range = tf.reshape(tf.range(output_shape[0], dtype=idx.dtype), shape=[input_shape[0], 1, 1, 1])
+    b = tf.ones_like(idx) * batch_range
+    b = tf.reshape(b, [flat_input_size, 1])
+    idx_ = tf.reshape(idx, [flat_input_size, 1])
+    idx_ = tf.concat([b, idx_], 1)
+
+    out = tf.scatter_nd(idx_, pool_, shape=flat_output_shape)
+    out = tf.reshape(out, output_shape)
+
+    return out
+
 def UpSample2D(pool, indx, output_shape):
 
     #pool_ = tf.reshape(pool, [-1])
@@ -131,7 +152,8 @@ def SegNet_model(input_shape=(512, 512, 3), classes=3, batch_size=4):
     h = tf.keras.layers.Conv2D(filters=64, kernel_size=3, padding="same", name="conv2")(h)
     h = tf.keras.layers.BatchNormalization()(h)
     h = tf.keras.layers.ReLU()(h)
-    pool1, poo1_indx1 = MaxPoolingWithArgmax2D((2,2))(h)
+    # pool1, poo1_indx1 = MaxPoolingWithArgmax2D((2,2))(h)
+    pool1, poo1_indx1 = tf.nn.max_pool_with_argmax(h, 2, 2, padding="SAME")
 
     h = tf.keras.layers.Conv2D(filters=128, kernel_size=3, padding="same", name="conv3")(pool1)
     h = tf.keras.layers.BatchNormalization()(h)
@@ -139,7 +161,8 @@ def SegNet_model(input_shape=(512, 512, 3), classes=3, batch_size=4):
     h = tf.keras.layers.Conv2D(filters=128, kernel_size=3, padding="same", name="conv4")(h)
     h = tf.keras.layers.BatchNormalization()(h)
     h = tf.keras.layers.ReLU()(h)
-    pool2, poo1_indx2 = MaxPoolingWithArgmax2D((2,2))(h)
+    # pool2, poo1_indx2 = MaxPoolingWithArgmax2D((2,2))(h)
+    pool2, poo1_indx2 = tf.nn.max_pool_with_argmax(h, 2, 2, padding="SAME")
 
     h = tf.keras.layers.Conv2D(filters=256, kernel_size=3, padding="same", name="conv5")(pool2)
     h = tf.keras.layers.BatchNormalization()(h)
@@ -150,7 +173,8 @@ def SegNet_model(input_shape=(512, 512, 3), classes=3, batch_size=4):
     h = tf.keras.layers.Conv2D(filters=256, kernel_size=3, padding="same", name="conv7")(h)
     h = tf.keras.layers.BatchNormalization()(h)
     h = tf.keras.layers.ReLU()(h)
-    pool3, poo1_indx3 = MaxPoolingWithArgmax2D((2,2))(h)
+    # pool3, poo1_indx3 = MaxPoolingWithArgmax2D((2,2))(h)
+    pool3, poo1_indx3 = tf.nn.max_pool_with_argmax(h, 2, 2, padding="SAME")
 
     h = tf.keras.layers.Conv2D(filters=512, kernel_size=3, padding="same", name="conv8")(pool3)
     h = tf.keras.layers.BatchNormalization()(h)
@@ -161,45 +185,73 @@ def SegNet_model(input_shape=(512, 512, 3), classes=3, batch_size=4):
     h = tf.keras.layers.Conv2D(filters=512, kernel_size=3, padding="same", name="conv10")(h)
     h = tf.keras.layers.BatchNormalization()(h)
     h = tf.keras.layers.ReLU()(h)
-    pool4, poo1_indx4 = MaxPoolingWithArgmax2D((2,2))(h)
+    # pool4, poo1_indx4 = MaxPoolingWithArgmax2D((2,2))(h)
+    pool4, poo1_indx4 = tf.nn.max_pool_with_argmax(h, 2, 2, padding="SAME")
+
+    h = tf.keras.layers.Conv2D(filters=512, kernel_size=3, padding="same", name="conv11")(pool4)
+    h = tf.keras.layers.BatchNormalization()(h)
+    h = tf.keras.layers.ReLU()(h)
+    h = tf.keras.layers.Conv2D(filters=512, kernel_size=3, padding="same", name="conv12")(h)
+    h = tf.keras.layers.BatchNormalization()(h)
+    h = tf.keras.layers.ReLU()(h)
+    h = tf.keras.layers.Conv2D(filters=512, kernel_size=3, padding="same", name="conv13")(h)
+    h = tf.keras.layers.BatchNormalization()(h)
+    h = tf.keras.layers.ReLU()(h)
+    pool5, poo1_indx5 = tf.nn.max_pool_with_argmax(h, 2, 2, padding="SAME")
 
     ######################################################################################################
 
-    h = MaxUnpooling2D((2,2))([pool4, poo1_indx4])
+    h = unpool_with_argmax(pool5, poo1_indx5)
+    # h = MaxUnpooling2D((2,2))([pool5, poo1_indx5])
     h = tf.keras.layers.Conv2D(filters=512, kernel_size=3, padding="same", name="conv17")(h)
     h = tf.keras.layers.BatchNormalization()(h)
     h = tf.keras.layers.ReLU()(h)
     h = tf.keras.layers.Conv2D(filters=512, kernel_size=3, padding="same", name="conv18")(h)
     h = tf.keras.layers.BatchNormalization()(h)
     h = tf.keras.layers.ReLU()(h)
-    h = tf.keras.layers.Conv2D(filters=256, kernel_size=3, padding="same", name="conv19")(h)
+    h = tf.keras.layers.Conv2D(filters=512, kernel_size=3, padding="same", name="conv19")(h)
     h = tf.keras.layers.BatchNormalization()(h)
     h = tf.keras.layers.ReLU()(h)
 
-    h = MaxUnpooling2D((2,2))([h, poo1_indx3])
-    h = tf.keras.layers.Conv2D(filters=256, kernel_size=3, padding="same", name="conv20")(h)
+    h = unpool_with_argmax(h, poo1_indx4)
+    # h = MaxUnpooling2D((2,2))([h, poo1_indx4])
+    h = tf.keras.layers.Conv2D(filters=512, kernel_size=3, padding="same", name="conv20")(h)
     h = tf.keras.layers.BatchNormalization()(h)
     h = tf.keras.layers.ReLU()(h)
-    h = tf.keras.layers.Conv2D(filters=256, kernel_size=3, padding="same", name="conv21")(h)
+    h = tf.keras.layers.Conv2D(filters=512, kernel_size=3, padding="same", name="conv21")(h)
     h = tf.keras.layers.BatchNormalization()(h)
     h = tf.keras.layers.ReLU()(h)
-    h = tf.keras.layers.Conv2D(filters=128, kernel_size=3, padding="same", name="conv22")(h)
-    h = tf.keras.layers.BatchNormalization()(h)
-    h = tf.keras.layers.ReLU()(h)
-
-    h = MaxUnpooling2D((2,2))([h, poo1_indx2])
-    h = tf.keras.layers.Conv2D(filters=128, kernel_size=3, padding="same", name="conv23")(h)
-    h = tf.keras.layers.BatchNormalization()(h)
-    h = tf.keras.layers.ReLU()(h)
-    h = tf.keras.layers.Conv2D(filters=64, kernel_size=3, padding="same", name="conv24")(h)
+    h = tf.keras.layers.Conv2D(filters=256, kernel_size=3, padding="same", name="conv22")(h)
     h = tf.keras.layers.BatchNormalization()(h)
     h = tf.keras.layers.ReLU()(h)
 
-    h = MaxUnpooling2D((2,2))([h, poo1_indx1])
-    h = tf.keras.layers.Conv2D(filters=64, kernel_size=3, padding="same", name="conv25")(h)
+    h = unpool_with_argmax(h, poo1_indx3)
+    # h = MaxUnpooling2D((2,2))([h, poo1_indx3])
+    h = tf.keras.layers.Conv2D(filters=256, kernel_size=3, padding="same", name="conv23")(h)
     h = tf.keras.layers.BatchNormalization()(h)
     h = tf.keras.layers.ReLU()(h)
-    h = tf.keras.layers.Conv2D(filters=64, kernel_size=3, padding="same", name="conv26")(h)
+    h = tf.keras.layers.Conv2D(filters=256, kernel_size=3, padding="same", name="conv24")(h)
+    h = tf.keras.layers.BatchNormalization()(h)
+    h = tf.keras.layers.ReLU()(h)
+    h = tf.keras.layers.Conv2D(filters=128, kernel_size=3, padding="same", name="conv25")(h)
+    h = tf.keras.layers.BatchNormalization()(h)
+    h = tf.keras.layers.ReLU()(h)
+
+    h = unpool_with_argmax(h, poo1_indx2)
+    # h = MaxUnpooling2D((2,2))([h, poo1_indx2])
+    h = tf.keras.layers.Conv2D(filters=128, kernel_size=3, padding="same", name="conv26")(h)
+    h = tf.keras.layers.BatchNormalization()(h)
+    h = tf.keras.layers.ReLU()(h)
+    h = tf.keras.layers.Conv2D(filters=64, kernel_size=3, padding="same", name="conv27")(h)
+    h = tf.keras.layers.BatchNormalization()(h)
+    h = tf.keras.layers.ReLU()(h)
+
+    h = unpool_with_argmax(h, poo1_indx1)
+    # h = MaxUnpooling2D((2,2))([h, poo1_indx1])
+    h = tf.keras.layers.Conv2D(filters=64, kernel_size=3, padding="same", name="conv28")(h)
+    h = tf.keras.layers.BatchNormalization()(h)
+    h = tf.keras.layers.ReLU()(h)
+    h = tf.keras.layers.Conv2D(filters=64, kernel_size=3, padding="same", name="conv29")(h)
     h = tf.keras.layers.BatchNormalization()(h)
     h = tf.keras.layers.ReLU()(h)
 
@@ -217,5 +269,8 @@ def SegNet_model(input_shape=(512, 512, 3), classes=3, batch_size=4):
     SegModel.get_layer("conv8").set_weights(backbone.get_layer("block4_conv1").get_weights())
     SegModel.get_layer("conv9").set_weights(backbone.get_layer("block4_conv2").get_weights())
     SegModel.get_layer("conv10").set_weights(backbone.get_layer("block4_conv3").get_weights())
+    SegModel.get_layer("conv11").set_weights(backbone.get_layer("block5_conv1").get_weights())
+    SegModel.get_layer("conv12").set_weights(backbone.get_layer("block5_conv2").get_weights())
+    SegModel.get_layer("conv13").set_weights(backbone.get_layer("block5_conv3").get_weights())
 
     return SegModel
